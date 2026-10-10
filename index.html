@@ -1,0 +1,1318 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f7f4ed">
+<title>Gerenciador de NFCs</title>
+<style>
+  :root {
+    --bg: #f7f4ed;
+    --fg: #1c1c1c;
+    --fg-83: rgba(28, 28, 28, 0.83);
+    --fg-82: rgba(28, 28, 28, 0.82);
+    --muted: #5f5f5d;
+    --fg-40: rgba(28, 28, 28, 0.4);
+    --fg-04: rgba(28, 28, 28, 0.04);
+    --fg-03: rgba(28, 28, 28, 0.03);
+    --border: #eceae4;
+    --offwhite: #fcfbf8;
+    --ring: rgba(59, 130, 246, 0.5);
+    --focus: rgba(0, 0, 0, 0.1) 0px 4px 12px;
+    --inset: rgba(255, 255, 255, 0.2) 0px 0.5px 0px 0px inset, rgba(0, 0, 0, 0.2) 0px 0px 0px 0.5px inset, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px;
+    --font: "Camera Plain Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 400 16px/1.5 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ---------- Navegação ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(247, 244, 237, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1200px; margin: 0 auto;
+    padding: 0 16px;
+    display: flex; align-items: center; gap: 24px;
+    min-height: 60px;
+  }
+  .wordmark {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; letter-spacing: -0.3px; font-size: 17px;
+    white-space: nowrap;
+  }
+  .wordmark svg { width: 22px; height: 22px; }
+  .tabs { display: flex; gap: 4px; flex: 1; }
+  .tab {
+    background: none; border: 0; cursor: pointer;
+    padding: 18px 10px 16px;
+    font-size: 15px; color: var(--muted);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); }
+  .tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ring); border-radius: 6px; }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 4px 12px; border-radius: 9999px;
+    border: 1px solid var(--border);
+    font-size: 13px; color: var(--muted); white-space: nowrap;
+  }
+  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-40); }
+  .status-pill.ok .dot { background: var(--fg); }
+  .status-pill.live .dot { background: var(--fg); animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  @media (max-width: 767px) {
+    .nav-inner { flex-wrap: wrap; gap: 0 12px; padding-top: 10px; }
+    .wordmark { flex: 1; }
+    .tabs { order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 12px; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { padding: 12px 10px 10px; }
+  }
+
+  /* ---------- Layout ---------- */
+  main { max-width: 1200px; margin: 0 auto; padding: 56px 16px 160px; }
+  .panel-head { max-width: 720px; margin-bottom: 40px; }
+  h1 {
+    font-size: 48px; line-height: 1.0; font-weight: 600; letter-spacing: -1.2px;
+    margin: 0 0 16px;
+  }
+  .lead { font-size: 18px; line-height: 1.38; color: var(--muted); margin: 0; }
+  h2 { font-size: 20px; line-height: 1.25; font-weight: 400; margin: 0 0 4px; }
+  h3 { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: var(--fg-83); }
+  .caption { font-size: 14px; color: var(--muted); margin: 0; }
+  .mono { font-family: var(--mono); font-size: 13.5px; }
+  @media (max-width: 767px) {
+    main { padding-top: 32px; }
+    h1 { font-size: 36px; letter-spacing: -0.9px; }
+    .panel-head { margin-bottom: 28px; }
+  }
+
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 1023px) { .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 699px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 899px) { .split { grid-template-columns: 1fr; } }
+
+  /* ---------- Cards ---------- */
+  .card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .card.featured { border-radius: 16px; }
+  .card.compact { border-radius: 8px; padding: 16px; }
+  .card + .card { margin-top: 16px; }
+  .grid > .card { margin-top: 0; }
+  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+  /* ---------- Botões ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px 16px; border-radius: 6px;
+    font-size: 16px; line-height: 1.5;
+    cursor: pointer; text-decoration: none;
+    border: 1px solid transparent;
+    transition: box-shadow 0.15s, opacity 0.15s, background 0.15s;
+  }
+  .btn:active { opacity: 0.8; }
+  .btn:focus-visible { outline: none; box-shadow: var(--focus); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .btn-primary { background: var(--fg); color: var(--offwhite); box-shadow: var(--inset); }
+  .btn-primary:focus-visible { box-shadow: var(--inset), var(--focus); }
+  .btn-ghost { background: transparent; border-color: var(--fg-40); color: var(--fg); }
+  .btn-ghost:hover { background: var(--fg-04); }
+  .btn-cream { background: var(--bg); color: var(--fg); }
+  .btn-cream:hover { background: var(--fg-04); }
+  .btn-sm { font-size: 14px; padding: 4px 12px; }
+  .btn-block { width: 100%; }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 9999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg); border: 0; cursor: pointer;
+    box-shadow: var(--inset); opacity: 0.6;
+  }
+  .icon-btn:hover { opacity: 1; }
+  .icon-btn:active { opacity: 0.8; }
+  .icon-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+  .icon-btn svg { width: 16px; height: 16px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+
+  a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ---------- Formulários ---------- */
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label, .label { font-size: 14px; color: var(--fg-83); }
+  .input, select.input, textarea.input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 16px;
+  }
+  textarea.input { min-height: 84px; resize: vertical; }
+  .input::placeholder { color: var(--muted); }
+  .input:focus { outline: none; border-color: var(--fg-40); box-shadow: 0 0 0 2px var(--ring); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 499px) { .row { grid-template-columns: 1fr; } }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--fg-83); cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--fg); }
+
+  /* ---------- Leitura ---------- */
+  .scan-card { text-align: center; padding: 48px 24px; }
+  .radar {
+    position: relative; width: 120px; height: 120px; margin: 0 auto 24px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .radar::before, .radar::after {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid var(--fg-40); opacity: 0;
+  }
+  .radar.on::before { animation: pulse 2s ease-out infinite; }
+  .radar.on::after { animation: pulse 2s ease-out 1s infinite; }
+  @keyframes pulse { from { transform: scale(0.55); opacity: 1; } to { transform: scale(1.15); opacity: 0; } }
+  .radar-core {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--fg-04); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .radar-core svg { width: 32px; height: 32px; }
+  .scan-title { font-size: 20px; line-height: 1.25; margin: 0 0 6px; }
+
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 0; }
+  .kv dt { font-size: 14px; color: var(--muted); }
+  .kv dd { margin: 0; font-size: 15px; word-break: break-all; }
+
+  .records { list-style: none; margin: 0; padding: 0; }
+  .record {
+    border-top: 1px solid var(--border);
+    padding: 14px 0;
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 12px;
+  }
+  .record:first-child { border-top: 0; padding-top: 0; }
+  .record-type { font-size: 13px; color: var(--muted); }
+  .record-value { font-size: 15px; white-space: pre-wrap; word-break: break-word; grid-column: 1; }
+  .record-meta { font-size: 12px; color: var(--muted); font-family: var(--mono); grid-column: 1; }
+  .record .icon-btn { grid-row: 1 / span 3; grid-column: 2; align-self: center; }
+
+  .empty {
+    border: 1px dashed var(--border); border-radius: 12px;
+    padding: 32px 24px; text-align: center; color: var(--muted); font-size: 15px;
+  }
+  .session-list { list-style: none; margin: 0; padding: 0; }
+  .session-list li {
+    display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+    padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px;
+  }
+  .session-list li:first-child { border-top: 0; padding-top: 0; }
+
+  /* ---------- Gravação ---------- */
+  .type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+  .type-btn {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); cursor: pointer; text-align: left; font-size: 14px;
+  }
+  .type-btn:hover { background: var(--fg-04); border-color: var(--fg-40); }
+  .type-btn:active { opacity: 0.8; }
+  .type-btn:focus-visible { outline: none; box-shadow: var(--focus); }
+  .type-btn svg { width: 18px; height: 18px; color: var(--muted); }
+
+  .builder-item { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; }
+  .builder-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .builder-head .title { flex: 1; font-size: 15px; }
+  .builder-head .num { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .builder-body { padding: 16px; }
+
+  .meter { height: 6px; background: var(--fg-04); border-radius: 9999px; overflow: hidden; margin: 10px 0 6px; }
+  .meter > span { display: block; height: 100%; background: var(--fg); border-radius: 9999px; transition: width 0.2s; }
+  .meter.over > span { background: repeating-linear-gradient(45deg, var(--fg) 0 6px, var(--fg-40) 6px 12px); }
+
+  /* ---------- Outros ---------- */
+  .tool-card { display: flex; flex-direction: column; }
+  .tool-card .icon {
+    width: 40px; height: 40px; border-radius: 9999px; margin-bottom: 16px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--fg-04); border: 1px solid var(--border);
+  }
+  .tool-card .icon svg { width: 20px; height: 20px; }
+  .tool-card p { flex: 1; }
+  .tool-card .actions { margin-top: 20px; }
+
+  /* ---------- Dialogs e sheet ---------- */
+  dialog {
+    border: 1px solid var(--border); border-radius: 16px;
+    background: var(--bg); color: var(--fg);
+    padding: 0; width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+    box-shadow: rgba(0, 0, 0, 0.1) 0px 12px 40px;
+  }
+  dialog::backdrop { background: rgba(28, 28, 28, 0.35); }
+  .dlg-head { padding: 20px 24px 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .dlg-body { padding: 16px 24px; }
+  .dlg-foot { padding: 16px 24px 20px; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border); }
+
+  .sheet {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(28, 28, 28, 0.35);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 16px;
+  }
+  .sheet-card {
+    width: min(440px, 100%);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 16px;
+    padding: 32px 24px 24px; text-align: center;
+    box-shadow: rgba(0, 0, 0, 0.1) 0px 12px 40px;
+  }
+  @media (min-width: 700px) { .sheet { align-items: center; } }
+
+  .toast-wrap { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(440px, calc(100vw - 32px)); pointer-events: none; }
+  .toast {
+    background: var(--fg); color: var(--offwhite); box-shadow: var(--inset), var(--focus);
+    border-radius: 8px; padding: 10px 16px; font-size: 14px;
+    animation: rise 0.2s ease-out;
+  }
+  @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
+
+  /* ---------- Banner ---------- */
+  .banner {
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 32px;
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--fg-03); font-size: 14px; color: var(--fg-83);
+  }
+  .banner svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+  footer { max-width: 1200px; margin: 0 auto; padding: 0 16px 120px; }
+  footer .inner { border-top: 1px solid var(--border); padding-top: 24px; font-size: 14px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-nfc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 8.5a5 5 0 0 1 0 7"/><path d="M9.5 6a9 9 0 0 1 0 12"/><path d="M13 3.5a13 13 0 0 1 0 17"/></symbol>
+    <symbol id="i-read" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18h3"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 6h14M12 6v13M8.5 19h7"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6 8.5 7 8.5-7"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></symbol>
+    <symbol id="i-sms" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-sos" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="0.8" fill="currentColor"/></symbol>
+    <symbol id="i-bt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-erase" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 10 6 6 6-6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></symbol>
+  </defs>
+</svg>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="wordmark"><svg><use href="#i-nfc"/></svg>Gerenciador de NFCs</div>
+    <nav class="tabs" role="tablist" aria-label="Seções">
+      <button class="tab" role="tab" data-tab="ler" aria-selected="true">Ler</button>
+      <button class="tab" role="tab" data-tab="gravar" aria-selected="false">Gravar</button>
+      <button class="tab" role="tab" data-tab="outros" aria-selected="false">Outros</button>
+    </nav>
+    <span class="status-pill" id="nfcStatus"><span class="dot"></span><span class="txt">Verificando NFC…</span></span>
+  </div>
+</header>
+
+<main>
+  <div class="banner" id="unsupportedBanner" hidden>
+    <svg><use href="#i-info"/></svg>
+    <div>
+      <strong style="font-weight:600">Este navegador não tem Web NFC.</strong>
+      Abra a página no Chrome para Android, em HTTPS (ou <span class="mono">localhost</span>).
+    </div>
+  </div>
+
+  <!-- ================= LER ================= -->
+  <section id="panel-ler" role="tabpanel">
+    <div class="panel-head">
+      <h1>Ler uma tag</h1>
+      <p class="lead">Aproxime a tag do celular para ver o número de série e todos os registros NDEF gravados nela.</p>
+    </div>
+
+    <div class="split">
+      <div>
+        <div class="card featured scan-card">
+          <div class="radar" id="radar"><div class="radar-core"><svg><use href="#i-nfc"/></svg></div></div>
+          <p class="scan-title" id="scanTitle">Leitura parada</p>
+          <p class="caption" id="scanHint">Toque em “Iniciar leitura” e encoste a tag na parte de trás do celular.</p>
+          <div class="actions" style="justify-content:center">
+            <button class="btn btn-primary" id="btnScan">Iniciar leitura</button>
+          </div>
+        </div>
+
+        <div class="card" id="readResult" hidden>
+          <div style="margin-bottom:16px">
+            <h2>Tag lida</h2>
+            <p class="caption" id="readWhen"></p>
+          </div>
+          <dl class="kv" style="margin-bottom:24px">
+            <dt>Número de série</dt><dd class="mono" id="readSerial"></dd>
+            <dt>Registros</dt><dd id="readCount"></dd>
+            <dt>Tamanho NDEF</dt><dd id="readSize"></dd>
+          </dl>
+          <h3>Registros NDEF</h3>
+          <ul class="records" id="readRecords"></ul>
+          <div class="actions">
+            <button class="btn btn-primary" id="btnEditRead">Editar e regravar</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>Leituras desta sessão</h2>
+          <p class="caption" style="margin-bottom:16px">As mais recentes ficam no topo.</p>
+          <ul class="session-list" id="sessionList"></ul>
+          <div class="empty" id="sessionEmpty">Nenhuma tag lida ainda.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GRAVAR ================= -->
+  <section id="panel-gravar" role="tabpanel" hidden>
+    <div class="panel-head">
+      <h1>Gravar registros</h1>
+      <p class="lead">Monte uma lista de registros e grave tudo de uma vez. Eles funcionam em qualquer celular com NFC, sem precisar de app.</p>
+    </div>
+
+    <div class="split">
+      <div>
+        <div class="card">
+          <h2>Adicionar registro</h2>
+          <p class="caption" style="margin-bottom:16px">Escolha o tipo de dado.</p>
+          <div class="type-grid" id="typeGrid"></div>
+        </div>
+        <div style="margin-top:24px">
+          <h3>Registros a gravar</h3>
+          <div id="builderList"></div>
+          <div class="empty" id="builderEmpty">A lista está vazia. Adicione um registro acima.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card featured">
+          <h2>Gravação</h2>
+          <div class="field" style="margin-top:16px">
+            <label for="chip">Modelo da tag (para estimar a memória)</label>
+            <select class="input" id="chip"></select>
+          </div>
+          <div class="meter" id="meter"><span style="width:0"></span></div>
+          <p class="caption" id="meterText">0 bytes</p>
+
+          <div style="display:flex; flex-direction:column; gap:12px; margin-top:20px">
+            <label class="check"><input type="checkbox" id="optOverwrite" checked> Sobrescrever se a tag já tiver dados</label>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary btn-block" id="btnWrite"><svg><use href="#i-nfc"/></svg>Gravar na tag</button>
+            <button class="btn btn-cream btn-block" id="btnClear">Limpar lista</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= OUTROS ================= -->
+  <section id="panel-outros" role="tabpanel" hidden>
+    <div class="panel-head">
+      <h1>Outras operações</h1>
+      <p class="lead">Copie o conteúdo de uma tag para outra, apague ou bloqueie para sempre.</p>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="card tool-card">
+        <div class="icon"><svg><use href="#i-copy"/></svg></div>
+        <h2>Copiar tag</h2>
+        <p class="caption">Lê todos os registros de uma tag e grava a mesma mensagem em outra.</p>
+        <div class="actions"><button class="btn btn-primary" id="btnCopy">Copiar</button></div>
+      </div>
+      <div class="card tool-card">
+        <div class="icon"><svg><use href="#i-erase"/></svg></div>
+        <h2>Apagar conteúdo</h2>
+        <p class="caption">Substitui a mensagem da tag por um único registro vazio. A tag continua gravável.</p>
+        <div class="actions"><button class="btn btn-ghost" id="btnErase">Apagar</button></div>
+      </div>
+      <div class="card tool-card" id="lockCard">
+        <div class="icon"><svg><use href="#i-lock"/></svg></div>
+        <h2>Bloquear permanentemente</h2>
+        <p class="caption">Deixa a tag somente leitura. É irreversível: nunca mais será possível gravar nela.</p>
+        <div class="actions"><button class="btn btn-ghost" id="btnLock">Bloquear</button></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer><div class="inner">Usa a Web NFC API (Chrome para Android 89+, HTTPS). Inspirado no NFC Tools.</div></footer>
+
+<!-- Dialog: confirmação -->
+<dialog id="confirmDialog">
+  <form method="dialog">
+    <div class="dlg-head"><h2 id="cfTitle"></h2></div>
+    <div class="dlg-body">
+      <p class="caption" id="cfBody" style="font-size:15px"></p>
+      <div class="field" id="cfTypeWrap" style="margin-top:16px" hidden>
+        <label for="cfType" id="cfTypeLabel"></label>
+        <input class="input" id="cfType" autocomplete="off">
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn btn-cream" value="cancel">Cancelar</button>
+      <button class="btn btn-primary" value="ok" id="cfOk"></button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Sheet: aproximar tag -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card" role="alertdialog" aria-live="polite">
+    <div class="radar on"><div class="radar-core"><svg><use href="#i-nfc"/></svg></div></div>
+    <p class="scan-title" id="sheetTitle"></p>
+    <p class="caption" id="sheetMsg"></p>
+    <div class="actions" style="justify-content:center"><button class="btn btn-ghost" id="sheetCancel">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   Utilidades
+   ========================================================= */
+const $ = (s, el = document) => el.querySelector(s);
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const icon = (id) => `<svg><use href="#i-${id}"/></svg>`;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+function concat(...parts) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+const hex = (bytes, sep = " ") => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(sep);
+
+const fmtDate = (ts) => new Date(ts).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+
+function toast(msg) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  $("#toasts").append(el);
+  setTimeout(() => el.remove(), 3800);
+}
+
+function nfcErrorMessage(err) {
+  switch (err?.name) {
+    case "NotAllowedError":   return "Permissão de NFC negada, ou a tag já tem dados e a opção de sobrescrever está desligada.";
+    case "NotSupportedError": return "Este dispositivo não tem NFC compatível, ou a tag não aceita a operação.";
+    case "NotReadableError":  return "NFC indisponível. Verifique se o NFC está ligado nas configurações.";
+    case "NetworkError":      return "A operação foi interrompida. Mantenha a tag encostada até o fim.";
+    case "InvalidStateError": return "Já existe uma leitura em andamento.";
+    case "AbortError":        return "Operação cancelada ou tempo esgotado.";
+    default:                  return `Erro de NFC: ${err?.message ?? err}`;
+  }
+}
+
+/* =========================================================
+   Registros: normalização, decodificação, serialização
+   Formato interno: { recordType, mediaType, lang, encoding, id, bytes, children }
+   ========================================================= */
+function toBytes(data) {
+  if (data == null) return new Uint8Array();
+  if (typeof data === "string") return enc.encode(data);
+  if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0));
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+  return new Uint8Array();
+}
+
+// NDEFRecord (real ou simulado) -> formato interno
+function fromNdefRecord(r) {
+  const out = {
+    recordType: r.recordType,
+    mediaType: r.mediaType || undefined,
+    lang: r.lang || undefined,
+    encoding: r.encoding || undefined,
+    id: r.id || undefined,
+    bytes: toBytes(r.data),
+  };
+  const nestable = r.recordType === "smart-poster" || r.recordType.includes(":");
+  if (nestable && typeof r.toRecords === "function") {
+    try {
+      const kids = r.toRecords();
+      if (kids && kids.length) out.children = kids.map(fromNdefRecord);
+    } catch { /* payload não é uma mensagem aninhada */ }
+  }
+  return out;
+}
+
+// Init de gravação (string | buffer | {records}) -> lista no formato interno
+function normalizeMessage(message) {
+  if (typeof message === "string") return [{ recordType: "text", lang: "en", encoding: "utf-8", bytes: enc.encode(message) }];
+  if (message instanceof ArrayBuffer || ArrayBuffer.isView(message)) {
+    return [{ recordType: "mime", mediaType: "application/octet-stream", bytes: toBytes(message) }];
+  }
+  return (message.records || []).map((init) => {
+    const r = { recordType: init.recordType, mediaType: init.mediaType, id: init.id, bytes: new Uint8Array() };
+    if (init.recordType === "text") { r.lang = init.lang || "en"; r.encoding = init.encoding || "utf-8"; }
+    if (init.data && typeof init.data === "object" && Array.isArray(init.data.records)) {
+      r.children = normalizeMessage(init.data);
+    } else {
+      r.bytes = toBytes(init.data);
+    }
+    return r;
+  });
+}
+
+// Formato interno -> init aceito por NDEFReader.write
+function toInit(r) {
+  const o = { recordType: r.recordType };
+  if (r.mediaType) o.mediaType = r.mediaType;
+  if (r.id) o.id = r.id;
+  if (r.recordType === "empty") return o;
+  if (r.children) { o.data = { records: r.children.map(toInit) }; return o; }
+  if (r.recordType === "text") {
+    if (r.lang) o.lang = r.lang;
+    if (!r.encoding || r.encoding === "utf-8") o.data = dec.decode(r.bytes);
+    else { o.encoding = r.encoding; o.data = r.bytes; }
+    return o;
+  }
+  if (r.recordType === "url" || r.recordType === "absolute-url") { o.data = dec.decode(r.bytes); return o; }
+  o.data = r.bytes;
+  return o;
+}
+
+// Wi-Fi Simple Configuration (application/vnd.wfa.wsc)
+function parseWsc(bytes) {
+  const res = {};
+  const walk = (b) => {
+    let i = 0;
+    while (i + 4 <= b.length) {
+      const t = (b[i] << 8) | b[i + 1];
+      const l = (b[i + 2] << 8) | b[i + 3];
+      const v = b.subarray(i + 4, i + 4 + l);
+      if (t === 0x100e) walk(v);
+      else if (t === 0x1045) res.ssid = dec.decode(v);
+      else if (t === 0x1003) res.auth = (v[0] << 8) | v[1];
+      i += 4 + l;
+    }
+  };
+  walk(bytes);
+  return res;
+}
+const AUTH_NAMES = { 0x0001: "Aberta", 0x0002: "WPA", 0x0020: "WPA2", 0x0022: "WPA/WPA2" };
+
+// Descrição legível de um registro
+function describe(r) {
+  const meta = [r.recordType, r.mediaType, r.lang, `${r.bytes?.length ?? 0} B`].filter(Boolean).join(" · ");
+  switch (r.recordType) {
+    case "empty": return { label: "Vazio", value: "Registro vazio", meta, icon: "file" };
+    case "text": {
+      let v;
+      try { v = new TextDecoder(r.encoding || "utf-8").decode(r.bytes); } catch { v = dec.decode(r.bytes); }
+      return { label: "Texto", value: v, meta, icon: "text", copy: v };
+    }
+    case "url":
+    case "absolute-url": {
+      const v = dec.decode(r.bytes);
+      const low = v.toLowerCase();
+      if (low.startsWith("mailto:")) return { label: "E-mail", value: decodeURIComponent(v.slice(7)), meta, icon: "mail", copy: v };
+      if (low.startsWith("tel:")) return { label: "Telefone", value: v.slice(4), meta, icon: "phone", copy: v.slice(4) };
+      if (low.startsWith("sms:")) return { label: "SMS", value: decodeURIComponent(v.slice(4)), meta, icon: "sms", copy: v };
+      if (low.startsWith("geo:")) return { label: "Localização", value: decodeURIComponent(v.slice(4)), meta, icon: "pin", copy: v };
+      return { label: "Link", value: v, meta, icon: "link", copy: v, href: /^https?:/i.test(v) ? v : null };
+    }
+    case "mime": {
+      const mt = (r.mediaType || "").toLowerCase();
+      if (mt === "text/vcard" || mt === "text/x-vcard") {
+        const txt = dec.decode(r.bytes);
+        const fn = (txt.match(/^FN[^:]*:(.*)$/m) || [])[1]?.trim();
+        const tel = (txt.match(/^TEL[^:]*:(.*)$/m) || [])[1]?.trim();
+        const emergency = /^NOTE[^:]*:.*EMERG/im.test(txt);
+        return { label: emergency ? "Contato de emergência" : "Contato", value: [fn, tel].filter(Boolean).join(" · ") || "vCard", meta, icon: emergency ? "sos" : "user", copy: txt };
+      }
+      if (mt === "application/vnd.wfa.wsc") {
+        const w = parseWsc(r.bytes);
+        return { label: "Wi-Fi", value: `${w.ssid ?? "(sem SSID)"}${w.auth ? " · " + (AUTH_NAMES[w.auth] ?? "segurança 0x" + w.auth.toString(16)) : ""}`, meta, icon: "wifi" };
+      }
+      if (mt === "application/vnd.bluetooth.ep.oob" && r.bytes.length >= 8) {
+        const mac = hex([...r.bytes.subarray(2, 8)].reverse(), ":").toUpperCase();
+        return { label: "Bluetooth", value: mac, meta, icon: "bt", copy: mac };
+      }
+      if (mt === "application/json" || mt.endsWith("+json")) {
+        const txt = dec.decode(r.bytes);
+        let v = txt;
+        try { v = JSON.stringify(JSON.parse(txt), null, 2); } catch {}
+        return { label: "JSON", value: v, meta, icon: "code", copy: txt };
+      }
+      if (mt.startsWith("text/")) {
+        const v = dec.decode(r.bytes);
+        return { label: "Texto (" + mt + ")", value: v, meta, icon: "text", copy: v };
+      }
+      return { label: "Dados " + (mt || "binários"), value: preview(r.bytes), meta, icon: "file" };
+    }
+    case "smart-poster": {
+      const parts = (r.children || []).map(describe).map((d) => `${d.label}: ${d.value}`);
+      return { label: "Smart poster", value: parts.join("\n") || preview(r.bytes), meta, icon: "link" };
+    }
+    default: {
+      if (r.children?.length) {
+        const parts = r.children.map(describe).map((d) => `${d.label}: ${d.value}`);
+        return { label: "Tipo externo", value: parts.join("\n"), meta, icon: "code" };
+      }
+      return { label: r.recordType === "unknown" ? "Desconhecido" : "Tipo externo", value: preview(r.bytes), meta, icon: "code" };
+    }
+  }
+}
+function preview(bytes) {
+  if (!bytes?.length) return "(sem dados)";
+  return hex(bytes.subarray(0, 32)) + (bytes.length > 32 ? " …" : "");
+}
+
+// Estimativa do tamanho da mensagem NDEF em bytes
+const URI_PREFIXES = ["http://www.", "https://www.", "http://", "https://", "tel:", "mailto:"];
+function recordSize(r) {
+  let type = 0, payload;
+  if (r.recordType === "text" || r.recordType === "url") type = 1;
+  else if (r.recordType === "smart-poster") type = 2;
+  else if (r.recordType === "mime") type = enc.encode(r.mediaType || "").length;
+  else if (r.recordType.includes(":")) type = enc.encode(r.recordType.split(":").pop()).length + (r.recordType.startsWith(":") ? 0 : r.recordType.indexOf(":"));
+
+  if (r.children) payload = r.children.reduce((n, c) => n + recordSize(c), 0);
+  else if (r.recordType === "text") payload = 1 + (r.lang || "en").length + r.bytes.length;
+  else if (r.recordType === "url") {
+    const s = dec.decode(r.bytes).toLowerCase();
+    const p = URI_PREFIXES.find((x) => s.startsWith(x));
+    payload = 1 + r.bytes.length - (p ? p.length : 0);
+  } else payload = r.bytes.length;
+
+  const idLen = r.id ? enc.encode(r.id).length : 0;
+  return 2 + (payload > 255 ? 4 : 1) + (idLen ? 1 + idLen : 0) + type + payload;
+}
+function messageSize(records) {
+  const msg = records.reduce((n, r) => n + recordSize(r), 0);
+  return msg + (msg > 254 ? 4 : 2) + 1; // TLV + terminador
+}
+
+function renderRecordList(ul, records, { copy = true } = {}) {
+  ul.innerHTML = records.length ? records.map((r, i) => {
+    const d = describe(r);
+    const value = d.href ? `<a href="${esc(d.href)}" target="_blank" rel="noopener">${esc(d.value)}</a>` : esc(d.value);
+    return `<li class="record">
+      <span class="record-type">${i + 1}. ${esc(d.label)}</span>
+      <span class="record-value">${value}</span>
+      <span class="record-meta">${esc(d.meta)}</span>
+      ${copy && d.copy ? `<button class="icon-btn" type="button" data-copy="${i}" aria-label="Copiar valor">${icon("copy")}</button>` : ""}
+    </li>`;
+  }).join("") : `<li class="record"><span class="record-value" style="color:var(--muted)">A tag não tem registros NDEF.</span></li>`;
+  ul.onclick = (e) => {
+    const b = e.target.closest("[data-copy]");
+    if (!b) return;
+    const d = describe(records[+b.dataset.copy]);
+    navigator.clipboard?.writeText(d.copy).then(() => toast("Copiado."), () => toast("Não foi possível copiar."));
+  };
+}
+
+/* =========================================================
+   Leitor NFC
+   ========================================================= */
+const SUPPORTED = "NDEFReader" in window;
+
+const state = {
+  reader: null,
+  scanCtrl: null,
+  scanning: false,
+  pending: null,     // operação aguardando uma tag (gravar, copiar, apagar, bloquear)
+  ignoreUntil: 0,    // ignora a leitura disparada pela própria gravação
+  lastTag: null,
+  session: [],
+};
+
+function getReader() {
+  if (state.reader) return state.reader;
+  const reader = new NDEFReader();
+  reader.addEventListener("reading", onReading);
+  reader.addEventListener("readingerror", () => {
+    if (state.pending) setSheet(null, "Não foi possível ler essa tag. Ela está formatada em NDEF? Tente de novo.");
+    else toast("Tag detectada, mas não foi possível ler. Ela está em NDEF?");
+  });
+  return (state.reader = reader);
+}
+
+async function startScan() {
+  if (state.scanning) return true;
+  const reader = getReader();
+  const ctrl = new AbortController();
+  try {
+    await reader.scan({ signal: ctrl.signal });
+    state.scanCtrl = ctrl;
+    state.scanning = true;
+    updateScanUI();
+    return true;
+  } catch (err) {
+    toast(nfcErrorMessage(err));
+    return false;
+  }
+}
+function stopScan() {
+  state.scanCtrl?.abort();
+  state.scanCtrl = null;
+  state.scanning = false;
+  updateScanUI();
+}
+
+function onReading(event) {
+  const tag = {
+    serial: event.serialNumber || "",
+    records: [...(event.message?.records || [])].map(fromNdefRecord),
+    at: Date.now(),
+  };
+  if (state.pending) { state.pending.handle(tag); return; }
+  if (Date.now() < state.ignoreUntil) return;
+  showRead(tag);
+}
+
+class RetryTag extends Error {}
+
+// Aguarda a próxima tag e executa op(tag, signal) com ela no campo.
+function armTagOp(title, message, op, { timeout = 45000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const ctrl = new AbortController();
+    let busy = false, settled = false;
+    const timer = setTimeout(() => ctrl.abort(), timeout);
+    const finish = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      state.pending = null;
+      state.ignoreUntil = Date.now() + 2000;
+      hideSheet();
+      fn(val);
+    };
+    ctrl.signal.addEventListener("abort", () => finish(reject, new DOMException("Cancelado", "AbortError")), { once: true });
+    state.pending = {
+      async handle(tag) {
+        if (busy || settled) return;
+        busy = true;
+        setSheet(null, "Mantenha a tag encostada…");
+        try {
+          await op(tag, ctrl.signal);
+          finish(resolve, tag);
+        } catch (err) {
+          if (err instanceof RetryTag) { setSheet(null, err.message); busy = false; return; }
+          finish(reject, err);
+        }
+      },
+    };
+    showSheet(title, message, () => ctrl.abort());
+  });
+}
+
+// Garante leitura ativa durante fn e restaura o estado anterior depois
+async function withScan(fn) {
+  const was = state.scanning;
+  if (!(await startScan())) return null;
+  try { return await fn(); }
+  catch (err) { toast(nfcErrorMessage(err)); return null; }
+  finally { if (!was) stopScan(); }
+}
+
+/* =========================================================
+   Sheet e diálogo de confirmação
+   ========================================================= */
+let sheetCancel = null;
+function showSheet(title, msg, onCancel) {
+  $("#sheetTitle").textContent = title;
+  $("#sheetMsg").textContent = msg;
+  sheetCancel = onCancel;
+  $("#sheet").hidden = false;
+}
+function setSheet(title, msg) {
+  if (title) $("#sheetTitle").textContent = title;
+  if (msg) $("#sheetMsg").textContent = msg;
+}
+function hideSheet() {
+  $("#sheet").hidden = true;
+  sheetCancel = null;
+}
+$("#sheetCancel").onclick = () => sheetCancel?.();
+
+function confirmDialog({ title, body, ok = "Confirmar", requireText = "" }) {
+  const dlg = $("#confirmDialog");
+  $("#cfTitle").textContent = title;
+  $("#cfBody").textContent = body;
+  $("#cfOk").textContent = ok;
+  $("#cfTypeWrap").hidden = !requireText;
+  $("#cfType").value = "";
+  $("#cfTypeLabel").textContent = `Digite ${requireText} para confirmar`;
+  $("#cfOk").disabled = !!requireText;
+  $("#cfType").oninput = () => { $("#cfOk").disabled = $("#cfType").value.trim().toUpperCase() !== requireText; };
+  dlg.returnValue = "";
+  dlg.showModal();
+  return new Promise((resolve) => {
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
+  });
+}
+
+/* =========================================================
+   Abas
+   ========================================================= */
+function selectTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === name)));
+  document.querySelectorAll("[role=tabpanel]").forEach((p) => { p.hidden = p.id !== "panel-" + name; });
+  window.scrollTo({ top: 0 });
+}
+document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
+
+/* =========================================================
+   LER
+   ========================================================= */
+function updateScanUI() {
+  $("#radar").classList.toggle("on", state.scanning);
+  $("#btnScan").textContent = state.scanning ? "Parar leitura" : "Iniciar leitura";
+  $("#btnScan").className = "btn " + (state.scanning ? "btn-ghost" : "btn-primary");
+  $("#scanTitle").textContent = state.scanning ? "Aproxime uma tag" : "Leitura parada";
+  $("#scanHint").textContent = state.scanning
+    ? "Encoste a tag na parte de trás do celular. A leitura pausa se a aba ficar em segundo plano."
+    : "Toque em “Iniciar leitura” e encoste a tag na parte de trás do celular.";
+  const pill = $("#nfcStatus");
+  pill.classList.toggle("live", state.scanning);
+  pill.querySelector(".txt").textContent = state.scanning ? "Lendo…" : (SUPPORTED ? "NFC disponível" : "Sem suporte a NFC");
+}
+$("#btnScan").onclick = () => (state.scanning ? stopScan() : startScan());
+
+function showRead(tag) {
+  state.lastTag = tag;
+  state.session.unshift(tag);
+  state.session = state.session.slice(0, 20);
+
+  $("#readResult").hidden = false;
+  $("#readWhen").textContent = fmtDate(tag.at);
+  $("#readSerial").textContent = tag.serial || "Indisponível";
+  $("#readCount").textContent = tag.records.length;
+  $("#readSize").textContent = tag.records.length ? `~${messageSize(tag.records)} bytes` : "—";
+  renderRecordList($("#readRecords"), tag.records);
+  renderSession();
+  if (navigator.vibrate) navigator.vibrate(60);
+}
+
+function renderSession() {
+  $("#sessionEmpty").hidden = state.session.length > 0;
+  $("#sessionList").innerHTML = state.session.map((t) => {
+    const first = t.records[0] ? describe(t.records[0]) : null;
+    return `<li><span><span style="color:var(--fg)">${esc(t.serial || "Tag sem serial")}</span><br>
+      <span class="caption">${first ? esc(first.label + ": " + first.value).slice(0, 60) : "Sem registros"}</span></span>
+      <span class="caption" style="white-space:nowrap">${new Date(t.at).toLocaleTimeString("pt-BR", { timeStyle: "short" })}</span></li>`;
+  }).join("");
+}
+
+$("#btnEditRead").onclick = () => {
+  if (!state.lastTag) return;
+  loadIntoBuilder(state.lastTag.records);
+  selectTab("gravar");
+};
+
+/* =========================================================
+   GRAVAR
+   ========================================================= */
+function buildWifi({ ssid, auth, pass }) {
+  const tlv = (t, v) => concat(new Uint8Array([t >> 8, t & 255, v.length >> 8, v.length & 255]), v);
+  const u16 = (n) => new Uint8Array([n >> 8, n & 255]);
+  const modes = { open: [0x0001, 0x0001], wpa2: [0x0020, 0x0008], mixed: [0x0022, 0x000c] };
+  const [a, e] = modes[auth] || modes.wpa2;
+  const cred = concat(
+    tlv(0x1026, new Uint8Array([1])),
+    tlv(0x1045, enc.encode(ssid)),
+    tlv(0x1003, u16(a)),
+    tlv(0x100f, u16(e)),
+    tlv(0x1027, enc.encode(auth === "open" ? "" : pass)),
+    tlv(0x1020, new Uint8Array([255, 255, 255, 255, 255, 255])),
+  );
+  return tlv(0x100e, cred);
+}
+function vcard(lines) {
+  return ["BEGIN:VCARD", "VERSION:3.0", ...lines.filter(Boolean), "END:VCARD"].join("\r\n");
+}
+const vEsc = (s) => s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, (c) => "\\" + c);
+const req = (v, msg) => (String(v ?? "").trim() ? null : msg);
+
+const KINDS = {
+  text: {
+    label: "Texto", icon: "text",
+    fields: [{ k: "text", label: "Texto", type: "textarea", ph: "Qualquer texto" }],
+    validate: (v) => req(v.text, "Escreva o texto."),
+    build: (v) => ({ recordType: "text", data: v.text, lang: "pt-BR" }),
+  },
+  url: {
+    label: "Link", icon: "link",
+    fields: [{ k: "url", label: "Endereço (site, vídeo, perfil, app)", type: "url", ph: "https://exemplo.com" }],
+    validate: (v) => req(v.url, "Informe o endereço."),
+    build: (v) => {
+      let u = v.url.trim();
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = "https://" + u;
+      return { recordType: "url", data: u };
+    },
+  },
+  email: {
+    label: "E-mail", icon: "mail",
+    fields: [
+      { k: "to", label: "Para", type: "email", ph: "nome@exemplo.com" },
+      { k: "subject", label: "Assunto", ph: "Opcional" },
+      { k: "body", label: "Mensagem", type: "textarea", ph: "Opcional" },
+    ],
+    validate: (v) => req(v.to, "Informe o e-mail."),
+    build: (v) => {
+      const q = new URLSearchParams();
+      if (v.subject) q.set("subject", v.subject);
+      if (v.body) q.set("body", v.body);
+      const qs = q.toString().replace(/\+/g, "%20");
+      return { recordType: "url", data: `mailto:${v.to.trim()}${qs ? "?" + qs : ""}` };
+    },
+  },
+  phone: {
+    label: "Telefone", icon: "phone",
+    fields: [{ k: "number", label: "Número", type: "tel", ph: "+55 11 99999-0000" }],
+    validate: (v) => req(v.number, "Informe o número."),
+    build: (v) => ({ recordType: "url", data: "tel:" + v.number.replace(/[^\d+*#]/g, "") }),
+  },
+  sms: {
+    label: "SMS", icon: "sms",
+    fields: [
+      { k: "number", label: "Número", type: "tel", ph: "+55 11 99999-0000" },
+      { k: "body", label: "Mensagem pré-definida", type: "textarea" },
+    ],
+    validate: (v) => req(v.number, "Informe o número."),
+    build: (v) => ({ recordType: "url", data: `sms:${v.number.replace(/[^\d+]/g, "")}${v.body ? "?body=" + encodeURIComponent(v.body) : ""}` }),
+  },
+  contact: {
+    label: "Contato", icon: "user",
+    fields: [
+      { k: "name", label: "Nome" },
+      { k: "org", label: "Empresa", ph: "Opcional" },
+      { k: "tel", label: "Telefone", type: "tel" },
+      { k: "email", label: "E-mail", type: "email" },
+      { k: "url", label: "Site", type: "url", ph: "Opcional" },
+    ],
+    validate: (v) => req(v.name, "Informe o nome do contato."),
+    build: (v) => ({
+      recordType: "mime", mediaType: "text/vcard",
+      data: enc.encode(vcard([
+        `N:;${vEsc(v.name)};;;`, `FN:${vEsc(v.name)}`,
+        v.org && `ORG:${vEsc(v.org)}`, v.tel && `TEL;TYPE=CELL:${v.tel}`,
+        v.email && `EMAIL:${v.email}`, v.url && `URL:${v.url}`,
+      ])),
+    }),
+  },
+  emergency: {
+    label: "Emergência", icon: "sos",
+    fields: [
+      { k: "name", label: "Seu nome" },
+      { k: "contact", label: "Contato de emergência", ph: "Nome de quem avisar" },
+      { k: "tel", label: "Telefone do contato", type: "tel" },
+      { k: "info", label: "Informações médicas", type: "textarea", ph: "Tipo sanguíneo, alergias, medicamentos…" },
+    ],
+    validate: (v) => req(v.name, "Informe seu nome.") || req(v.tel, "Informe o telefone de emergência."),
+    build: (v) => ({
+      recordType: "mime", mediaType: "text/vcard",
+      data: enc.encode(vcard([
+        `N:;${vEsc(v.name)};;;`, `FN:${vEsc(v.name)}`,
+        `TEL;TYPE=CELL:${v.tel}`,
+        `NOTE:${vEsc(["EMERGÊNCIA", v.contact && "Avisar: " + v.contact, v.info].filter(Boolean).join("\n"))}`,
+      ])),
+    }),
+  },
+  geo: {
+    label: "Localização", icon: "pin",
+    fields: [
+      { k: "address", label: "Endereço", ph: "Ou preencha latitude e longitude" },
+      { k: "lat", label: "Latitude", type: "number", ph: "-23.5505", half: true },
+      { k: "lng", label: "Longitude", type: "number", ph: "-46.6333", half: true },
+    ],
+    validate: (v) => (v.address?.trim() || (v.lat !== "" && v.lat != null && v.lng !== "" && v.lng != null)) ? null : "Informe um endereço ou as coordenadas.",
+    build: (v) => {
+      const hasCoords = v.lat !== "" && v.lat != null && v.lng !== "" && v.lng != null;
+      if (hasCoords) return { recordType: "url", data: `geo:${+v.lat},${+v.lng}` };
+      return { recordType: "url", data: "geo:0,0?q=" + encodeURIComponent(v.address.trim()) };
+    },
+  },
+  wifi: {
+    label: "Wi-Fi", icon: "wifi",
+    fields: [
+      { k: "ssid", label: "Nome da rede (SSID)" },
+      { k: "auth", label: "Segurança", type: "select", options: [["wpa2", "WPA2"], ["mixed", "WPA/WPA2"], ["open", "Aberta"]] },
+      { k: "pass", label: "Senha", type: "text" },
+    ],
+    validate: (v) => req(v.ssid, "Informe o nome da rede.") || (v.auth !== "open" && !v.pass ? "Informe a senha da rede." : null),
+    build: (v) => ({ recordType: "mime", mediaType: "application/vnd.wfa.wsc", data: buildWifi({ ssid: v.ssid, auth: v.auth || "wpa2", pass: v.pass || "" }) }),
+  },
+  bluetooth: {
+    label: "Bluetooth", icon: "bt",
+    fields: [{ k: "mac", label: "Endereço MAC do dispositivo", ph: "00:11:22:33:44:55" }],
+    validate: (v) => /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test((v.mac || "").trim()) ? null : "Use o formato 00:11:22:33:44:55.",
+    build: (v) => {
+      const mac = v.mac.trim().split(/[:-]/).map((h) => parseInt(h, 16)).reverse();
+      return { recordType: "mime", mediaType: "application/vnd.bluetooth.ep.oob", data: new Uint8Array([8, 0, ...mac]) };
+    },
+  },
+  json: {
+    label: "JSON", icon: "code",
+    fields: [{ k: "json", label: "Dados JSON (application/json)", type: "textarea", ph: '{ "id": 42 }' }],
+    validate: (v) => { try { JSON.parse(v.json); return null; } catch { return "JSON inválido."; } },
+    build: (v) => ({ recordType: "mime", mediaType: "application/json", data: enc.encode(JSON.stringify(JSON.parse(v.json))) }),
+  },
+  raw: { label: "Registro existente", icon: "file", fields: [], validate: () => null, build: (v) => toInit(v.record) },
+};
+
+let builder = [];
+
+$("#typeGrid").innerHTML = Object.entries(KINDS).filter(([k]) => k !== "raw")
+  .map(([k, d]) => `<button class="type-btn" type="button" data-kind="${k}">${icon(d.icon)}${esc(d.label)}</button>`).join("");
+$("#typeGrid").onclick = (e) => {
+  const b = e.target.closest("[data-kind]");
+  if (!b) return;
+  const values = {};
+  for (const f of KINDS[b.dataset.kind].fields) values[f.k] = f.type === "select" ? f.options[0][0] : "";
+  builder.push({ id: uid(), kind: b.dataset.kind, values });
+  renderBuilder();
+  const last = $("#builderList").lastElementChild;
+  last?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  last?.querySelector("input, textarea, select")?.focus({ preventScroll: true });
+};
+
+function fieldHtml(item, f) {
+  const id = `f-${item.id}-${f.k}`;
+  const v = esc(item.values[f.k] ?? "");
+  let control;
+  if (f.type === "textarea") control = `<textarea class="input" id="${id}" data-k="${f.k}" placeholder="${esc(f.ph || "")}">${v}</textarea>`;
+  else if (f.type === "select") control = `<select class="input" id="${id}" data-k="${f.k}">${f.options.map(([val, lab]) => `<option value="${val}"${item.values[f.k] === val ? " selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
+  else control = `<input class="input" id="${id}" data-k="${f.k}" type="${f.type || "text"}" ${f.type === "number" ? 'step="any"' : ""} value="${v}" placeholder="${esc(f.ph || "")}">`;
+  return `<div class="field"><label for="${id}">${esc(f.label)}</label>${control}</div>`;
+}
+
+function renderBuilder() {
+  $("#builderEmpty").hidden = builder.length > 0;
+  $("#builderList").innerHTML = builder.map((item, i) => {
+    const kind = KINDS[item.kind];
+    let body = "";
+    if (item.kind === "raw") {
+      const d = describe(item.values.record);
+      body = `<p class="caption" style="margin-bottom:4px">${esc(d.label)}</p><p style="margin:0; white-space:pre-wrap; word-break:break-word">${esc(d.value)}</p><p class="record-meta" style="margin-top:6px">${esc(d.meta)}</p>`;
+    } else {
+      const fs = kind.fields;
+      for (let j = 0; j < fs.length; j++) {
+        if (fs[j].half && fs[j + 1]?.half) { body += `<div class="row">${fieldHtml(item, fs[j])}${fieldHtml(item, fs[j + 1])}</div>`; j++; }
+        else body += fieldHtml(item, fs[j]);
+      }
+    }
+    return `<div class="builder-item" data-id="${item.id}">
+      <div class="builder-head">
+        <span class="num">${String(i + 1).padStart(2, "0")}</span>
+        <span class="title">${esc(item.kind === "raw" ? describe(item.values.record).label : kind.label)}</span>
+        <button class="icon-btn" type="button" data-act="up" aria-label="Mover para cima" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
+        <button class="icon-btn" type="button" data-act="down" aria-label="Mover para baixo" ${i === builder.length - 1 ? "disabled" : ""}>${icon("down")}</button>
+        <button class="icon-btn" type="button" data-act="remove" aria-label="Remover">${icon("x")}</button>
+      </div>
+      <div class="builder-body">${body}</div>
+    </div>`;
+  }).join("");
+  updateMeter();
+}
+
+$("#builderList").addEventListener("input", (e) => {
+  const el = e.target.closest("[data-k]");
+  if (!el) return;
+  const item = builder.find((b) => b.id === el.closest(".builder-item").dataset.id);
+  item.values[el.dataset.k] = el.value;
+  updateMeter();
+});
+$("#builderList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  const i = builder.findIndex((x) => x.id === b.closest(".builder-item").dataset.id);
+  if (b.dataset.act === "remove") builder.splice(i, 1);
+  if (b.dataset.act === "up" && i > 0) [builder[i - 1], builder[i]] = [builder[i], builder[i - 1]];
+  if (b.dataset.act === "down" && i < builder.length - 1) [builder[i + 1], builder[i]] = [builder[i], builder[i + 1]];
+  renderBuilder();
+});
+
+function loadIntoBuilder(records) {
+  builder = records.map((r) => ({ id: uid(), kind: "raw", values: { record: r } }));
+  renderBuilder();
+}
+
+const CHIPS = [
+  ["ul-ev1", "Ultralight EV1", 48],
+  ["ntag213", "NTAG213", 144],
+  ["ntag215", "NTAG215", 504],
+  ["ntag216", "NTAG216", 888],
+  ["classic1k", "Mifare Classic 1K", 716],
+];
+$("#chip").innerHTML = CHIPS.map(([k, n, b]) => `<option value="${k}">${n} · ${b} bytes</option>`).join("");
+$("#chip").value = "ntag215";
+$("#chip").onchange = updateMeter;
+
+// Monta os registros; com strict=true lança erro no primeiro inválido
+function buildMessage(strict) {
+  const records = [];
+  builder.forEach((item, i) => {
+    const kind = KINDS[item.kind];
+    const err = kind.validate(item.values);
+    if (err) { if (strict) throw new Error(`Registro ${i + 1} (${kind.label}): ${err}`); return; }
+    try { records.push(kind.build(item.values)); }
+    catch (e) { if (strict) throw new Error(`Registro ${i + 1}: ${e.message}`); }
+  });
+  return { records };
+}
+
+function updateMeter() {
+  const cap = CHIPS.find((c) => c[0] === $("#chip").value)[2];
+  const msg = buildMessage(false);
+  const size = msg.records.length ? messageSize(normalizeMessage(msg)) : 0;
+  const pct = Math.min(100, (size / cap) * 100);
+  $("#meter").classList.toggle("over", size > cap);
+  $("#meter span").style.width = pct + "%";
+  $("#meterText").textContent = size > cap
+    ? `~${size} bytes. Passa do limite de ${cap} bytes deste chip.`
+    : `~${size} de ${cap} bytes (${Math.round(pct)}%). Estimativa.`;
+}
+
+$("#btnClear").onclick = () => { builder = []; renderBuilder(); };
+
+$("#btnWrite").onclick = async () => {
+  let message;
+  try { message = buildMessage(true); } catch (e) { toast(e.message); return; }
+  if (!message.records.length) { toast("Adicione pelo menos um registro."); return; }
+  const overwrite = $("#optOverwrite").checked;
+  const reader = getReader();
+
+  const tag = await withScan(() => armTagOp(
+    "Gravar tag",
+    `Aproxime a tag e mantenha encostada. ${message.records.length} registro(s) serão gravados.`,
+    (t, signal) => reader.write(message, { overwrite, signal }),
+  ));
+  if (!tag) return;
+
+  toast("Tag gravada com sucesso.");
+  if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+};
+
+/* =========================================================
+   OUTROS
+   ========================================================= */
+$("#btnCopy").onclick = async () => {
+  const reader = getReader();
+  await withScan(async () => {
+    const src = await armTagOp("Copiar tag", "Aproxime a tag de origem.", async (t) => {
+      if (!t.records.length) throw new RetryTag("Essa tag está vazia. Aproxime outra tag de origem.");
+    });
+    const n = src.records.length;
+    await armTagOp(
+      "Copiar tag",
+      `Origem lida (${n} registro${n > 1 ? "s" : ""}). Afaste-a e aproxime a tag de destino.`,
+      async (t, signal) => {
+        if (src.serial && t.serial === src.serial) throw new RetryTag("Essa é a tag de origem. Aproxime a tag de destino.");
+        await reader.write({ records: src.records.map(toInit) }, { signal });
+      },
+    );
+    toast("Tag copiada.");
+  });
+};
+
+$("#btnErase").onclick = async () => {
+  const ok = await confirmDialog({
+    title: "Apagar o conteúdo da tag?",
+    body: "Todos os registros serão substituídos por um registro vazio. Isso não pode ser desfeito, mas a tag continua gravável.",
+    ok: "Apagar",
+  });
+  if (!ok) return;
+  const reader = getReader();
+  const tag = await withScan(() => armTagOp("Apagar tag", "Aproxime a tag que será apagada.",
+    (t, signal) => reader.write({ records: [{ recordType: "empty" }] }, { signal })));
+  if (!tag) return;
+  toast("Tag apagada.");
+};
+
+// makeReadOnly só existe a partir do Chrome 100
+if (SUPPORTED && typeof NDEFReader.prototype.makeReadOnly !== "function") $("#lockCard").remove();
+$("#btnLock").onclick = async () => {
+  const ok = await confirmDialog({
+    title: "Bloquear a tag para sempre?",
+    body: "A tag ficará somente leitura de forma permanente. Nenhum app ou dispositivo conseguirá gravar nela de novo. Grave o conteúdo final antes.",
+    ok: "Bloquear permanentemente",
+    requireText: "BLOQUEAR",
+  });
+  if (!ok) return;
+  const reader = getReader();
+  const tag = await withScan(() => armTagOp("Bloquear tag", "Aproxime a tag que será bloqueada.",
+    (t, signal) => reader.makeReadOnly({ signal })));
+  if (!tag) return;
+  toast("Tag bloqueada. Agora ela é somente leitura.");
+};
+
+/* =========================================================
+   Inicialização
+   ========================================================= */
+(async function init() {
+  const pill = $("#nfcStatus");
+  if (SUPPORTED) {
+    pill.classList.add("ok");
+    try {
+      const { state: perm } = await navigator.permissions.query({ name: "nfc" });
+      if (perm === "denied") pill.querySelector(".txt").textContent = "NFC bloqueado";
+    } catch { /* permissions.query("nfc") pode não existir */ }
+  } else {
+    $("#unsupportedBanner").hidden = false;
+    document.querySelectorAll("#btnScan, #btnWrite, #btnCopy, #btnErase, #btnLock").forEach((b) => (b.disabled = true));
+  }
+  updateScanUI();
+  renderBuilder();
+  renderSession();
+})();
+</script>
+</body>
+</html>

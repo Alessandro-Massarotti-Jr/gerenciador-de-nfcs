@@ -1,0 +1,44 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Gerenciador de NFCs
+      - tablist "Seções" [ref=e7]:
+        - tab "Ler" [selected] [ref=e8] [cursor=pointer]
+        - tab "Gravar" [ref=e9] [cursor=pointer]
+        - tab "Outros" [ref=e10] [cursor=pointer]
+        - tab "Coleção" [ref=e11] [cursor=pointer]
+      - generic [ref=e12]: Lendo…
+  - main [ref=e15]:
+    - generic [ref=e19]:
+      - strong [ref=e20]: Este navegador não tem Web NFC.
+      - text: A API funciona só no Chrome para Android, em página HTTPS (ou localhost). Enquanto isso, a página roda em
+      - strong [ref=e21]: modo demonstração
+      - text: ", com tags simuladas: use o painel no rodapé para aproximar uma tag."
+    - tabpanel [ref=e22]:
+      - generic [ref=e23]:
+        - heading "Ler uma tag" [level=1] [ref=e24]
+        - paragraph [ref=e25]: Aproxime a tag do celular para ver o número de série e todos os registros NDEF gravados nela.
+      - generic [ref=e26]:
+        - generic [ref=e28]:
+          - paragraph [ref=e33]: Aproxime uma tag
+          - paragraph [ref=e34]: Encoste a tag na parte de trás do celular. A leitura pausa se a aba ficar em segundo plano.
+          - button "Parar leitura" [active] [ref=e51] [cursor=pointer]
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - heading "Leituras desta sessão" [level=2] [ref=e39]
+            - paragraph [ref=e40]: As mais recentes ficam no topo.
+            - list
+            - generic [ref=e41]: Nenhuma tag lida ainda.
+          - generic [ref=e42]:
+            - heading "O que o navegador não informa" [level=2] [ref=e43]
+            - paragraph [ref=e44]: O app Android consegue ler fabricante, tipo do chip (NTAG215, Ultralight…), tecnologias, memória total e estado de bloqueio. A Web NFC só expõe o número de série e a mensagem NDEF. Por isso a capacidade na aba Gravar é uma estimativa por modelo de chip.
+  - contentinfo [ref=e45]:
+    - generic [ref=e46]: Usa a Web NFC API (Chrome para Android 89+, HTTPS). Inspirado no NFC Tools, com foco em gerenciar uma coleção de tags.
+  - generic [ref=e47]:
+    - generic [ref=e48]: Tag simulada
+    - combobox [ref=e49]:
+      - option "NTAG215 · chaveiro" [selected]
+      - option "NTAG213 · adesivo novo"
+      - option "NTAG216 · cartão"
+      - option "Ultralight · pulseira"
+    - button "Aproximar" [ref=e50] [cursor=pointer]
